@@ -3,3 +3,4 @@ composio
 openai 
 langchain_community 
 streamlit
+plotly

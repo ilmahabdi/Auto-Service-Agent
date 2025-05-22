@@ -9,7 +9,7 @@ from typing import Literal, Optional, Dict, Any, List, Union
 from langchain.prompts import PromptTemplate
 from langchain.chains import LLMChain, SequentialChain
 from langchain.output_parsers import PydanticOutputParser
-from langchain.chat_models import AzureChatOpenAI
+from langchain_community.chat_models import AzureChatOpenAI
 from composio import ComposioToolSet
 import pandas as pd
 import json
