@@ -1,5 +1,3 @@
-#THIS ONE
-
 import logging
 import os
 from datetime import datetime, timedelta
@@ -9,7 +7,7 @@ from typing import Literal, Optional, Dict, Any, List, Union
 from langchain.prompts import PromptTemplate
 from langchain.chains import LLMChain, SequentialChain
 from langchain.output_parsers import PydanticOutputParser
-from langchain_community.chat_models import AzureChatOpenAI
+from langchain.chat_models import AzureChatOpenAI
 from composio import ComposioToolSet
 import pandas as pd
 import json
@@ -620,8 +618,82 @@ def create_calendar_event(cal_integration, prefs, vehicle):
         logger.error(f"Failed to create calendar event: {e}")
         raise e
 
+from langchain.chains import ConversationChain
+from langchain.memory import ConversationBufferMemory
+from langchain.prompts import PromptTemplate
+from langchain.prompts import ChatPromptTemplate, MessagesPlaceholder
+
+def ask_the_agent_tab():
+    st.markdown("<div class='card'>", unsafe_allow_html=True)
+    st.markdown("<h3 class='service-header'>🔍 Ask the AutoX Agent</h3>", unsafe_allow_html=True)
+
+    llm = init_llm()
+    if not llm:
+        st.error("⚠️ Please configure Azure OpenAI credentials.")
+        return
+
+    # Memory setup
+    if "chat_memory" not in st.session_state:
+        st.session_state.chat_memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
+
+    # Data filter options
+    data_filter = st.radio("Select context to use:", ["Fleet Data", "Service History", "Both"], horizontal=True)
+
+    # User query
+    user_input = st.text_input("Ask a question about your fleet or service data:")
+
+    if st.button("Ask") and user_input:
+        # Prepare context
+        fleet_data = st.session_state.get("fleet_data", [])
+        service_history = st.session_state.get("service_history", [])
+
+        if data_filter == "Fleet Data":
+           context = f"Fleet Data:\n{json.dumps(fleet_data, indent=2)}" 
+        elif data_filter == "Service History":
+           context = f"Service History:\n{json.dumps(service_history, indent=2)}"
+        else:
+           context = (
+               f"Fleet Data:\n{json.dumps(fleet_data, indent=2)}\n\n"
+               f"Service History:\n{json.dumps(service_history, indent=2)}"
+           )
+
+
+        # Inject context using partial
+        prompt_template = ChatPromptTemplate.from_messages([
+            MessagesPlaceholder(variable_name="chat_history"),
+            ("human", """Context:
+{context}
+
+{input}""")
+        ]).partial(context=context)
+
+        # Conversation chain with memory
+        conversation = ConversationChain(
+            llm=llm,
+            prompt=prompt_template,
+            memory=st.session_state.chat_memory,
+            verbose=False
+        )
+
+        # Get LLM response
+        with st.spinner("Thinking..."):
+            response = conversation.run(user_input)
+            st.success(response)
+
+    # Show conversation history
+    if st.session_state.chat_memory.buffer_as_messages:
+        st.markdown("### 💬 Chat History")
+        for msg in st.session_state.chat_memory.buffer_as_messages:
+            if msg.type == "human":
+                st.markdown(f"**You:** {msg.content}")
+            elif msg.type == "ai":
+                st.markdown(f"**Agent:** {msg.content}")
+
+    st.markdown("</div>", unsafe_allow_html=True)
+
+
 # --- Main application tabs
-tab1, tab2 = st.tabs(["Vehicle Service Check", "Service History"])
+tab1, tab2, tab3 = st.tabs(["Vehicle Service Check", "Service History", "Ask the Agent"])
 
 with tab1:
     st.markdown("<div class='card'>", unsafe_allow_html=True)
@@ -1100,7 +1172,8 @@ with tab2:
             st.markdown(f"<div class='metric-value'>{percentage}%</div>", unsafe_allow_html=True)
             st.markdown("<div class='metric-label'>Service Required Rate</div>", unsafe_allow_html=True)
             st.markdown("</div>", unsafe_allow_html=True)
-
+        with tab3:
+             ask_the_agent_tab()
         with col3:
             st.markdown("<div class='metric-container'>", unsafe_allow_html=True)
             unique_vehicles = history_df["vehicle"].nunique()
